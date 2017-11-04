@@ -19,13 +19,14 @@ function batchRequest(){
     #$data = getUserInfo($dbh,1);
     #return $data;
     #refreshTickerDataAlphaVantage($dbh);
-    refreshTickerYahoo($dbh);
+    #refreshTickerYahoo($dbh);
     #$theCrumb = getYahooCrumb($cookie_jar);
     #$csv = readYahoo('VTI', mktime(0, 0, 0, 6, 2, 2000), mktime(0, 0, 0, 10, 30, 2017));
     #echo $csv;
     #getTickerDataWeb('VTI','yahoo',$theCrumb,$cookie_jar);
     #getTickerDataWeb('VTI','yahoo');
-    #updatePerformanceNEW($dbh);
+    updatePerformanceNEW($dbh, 1);  # 1 = Yahoo
+    #updatePerformanceNEW($dbh, 3);  # 3 = AlphaVantage
     #getPerformanceForTickerAndDate($dbh, 1,'2017-10-25');
     #getPerformanceForTickerAndDate($dbh, 2,'2017-09-30');
     #getPerformanceForTickerAndDate($dbh, 3,'2017-09-30');
@@ -100,7 +101,7 @@ function  refreshTickerYahoo($dbh){
         echo "Refreshing Ticker Data for idTicker: $idTicker and ticker: $ticker \n";
         $method = 'W';
         #$tickerData = readYahoo($ticker, $method);
-        $tickerData = readYahoo($ticker, mktime(0, 0, 0, 6, 2, 1995), mktime(0, 0, 0, 10, 30, 2017));
+        $tickerData = readYahoo($ticker, mktime(0, 0, 0, 6, 2, 1995), mktime(0, 0, 0, 11, 04, 2017));
         updateTickerDataTableYahoo($dbh,$idTicker,$tickerData);
     }
 }
@@ -288,85 +289,87 @@ function  updateTickerDataTableYahoo($dbh,$idTicker,$tickerData){
 }
 
 
-function  updatePerformanceNEW($dbh){
+function  updatePerformanceNEW($dbh, $sourceData){
     $tickers = getTickers($dbh);
     
     foreach ($tickers as $id => $data){
         $ticker = $data{'ticker'};
         $idTicker = $data{'idticker'};
-        echo "Updating Performance for idTicker: $idTicker and ticker: $ticker \n";
-        updatePerformanceForTickerNEW($dbh,$idTicker);
+        echo "Updating Performance for idTicker: $idTicker and ticker: $ticker source:$sourceData\n";
+        updatePerformanceForTickerNEW($dbh,$idTicker, $sourceData);
     }
 }
 
-function  updatePerformanceForTickerNEW($dbh,$idTicker){
+function  updatePerformanceForTickerNEW($dbh,$idTicker, $sourceData){
     $dates = getTickerDates($dbh, $idTicker);
     $update = 1;
     $display = 0;
     foreach ($dates as $id => $array){
         $date = $array{'closing_date'};
-        getPerformanceForTickerAndDate($dbh,$idTicker,$date, $update, $display);
+        getPerformanceForTickerAndDate($dbh,$idTicker,$date, $update, $display, $sourceData);
     }
 }
 
 
-function  getPerformanceForTickerAndDate($dbh,$idTicker,$date, $update=0, $display=0){
+function  getPerformanceForTickerAndDate($dbh,$idTicker,$date, $update=0, $display=0, $sourceData){
         
         #echo "this is date:$date";
         $date1yrAgo = strtotime("$date -1 year");
         $date1yrAgo = date('Y-m-d', $date1yrAgo);
         #echo "date 1 year ago: $date1yrAgo\n";
             
-        $query = 'select adjusted_close from ticker_data where ticker_idticker = ? and closing_date = ? ';
-        $types = 'is';  ## pass
-        $params = array($idTicker, $date);
+        $query = 'select adjusted_close from ticker_data where ticker_idticker = ? and closing_date = ? and data_source_iddata_source = ?';
+        $types = 'isi';  ## pass
+        $params = array($idTicker, $date, $sourceData);
         $data = execSqlSingleRowPREPARED($dbh, $query, $types, $params);
         $closeNewAdj = $data{'adjusted_close'};
 
-        $query = 'select close from ticker_data where ticker_idticker = ? and closing_date = ? ';
-        $types = 'is';  ## pass
-        $params = array($idTicker, $date);
+        $query = 'select close from ticker_data where ticker_idticker = ? and closing_date = ? and data_source_iddata_source = ?';
+        $types = 'isi';  ## pass
+        $params = array($idTicker, $date, $sourceData);
         $data = execSqlSingleRowPREPARED($dbh, $query, $types, $params);
         $closeNewNonAdj = $data{'close'};
         
         $query = 'select sum(dividend_amt/close) divShares from ticker_data where ticker_idticker = ? 
                     and closing_date <= ? 
-                    and closing_date >= ? ';
-        $types = 'iss';  ## pass
-        $params = array($idTicker, $date, $date1yrAgo);
+                    and closing_date >= ? and data_source_iddata_source = ?';
+        $types = 'issi';  ## pass
+        $params = array($idTicker, $date, $date1yrAgo, $sourceData);
         $data = execSqlSingleRowPREPARED($dbh, $query, $types, $params);
         $divSharesNonAdj = $data{'divShares'};
 
         $query = 'select sum(dividend_amt/adjusted_close) divShares from ticker_data where ticker_idticker = ? 
                     and closing_date <= ? 
-                    and closing_date >= ? ';
-        $types = 'iss';  ## pass
-        $params = array($idTicker, $date, $date1yrAgo);
+                    and closing_date >= ? and data_source_iddata_source = ?';
+        $types = 'issi';  ## pass
+        $params = array($idTicker, $date, $date1yrAgo, $sourceData);
         $data = execSqlSingleRowPREPARED($dbh, $query, $types, $params);
         $divSharesAdj = $data{'divShares'};
     
         $query = 'select sum(dividend_amt) divAmt from ticker_data where ticker_idticker = ? 
                     and closing_date <= ? 
-                    and closing_date >= ? ';
-        $types = 'iss';  ## pass
-        $params = array($idTicker, $date, $date1yrAgo);
+                    and closing_date >= ? and data_source_iddata_source = ?';
+        $types = 'issi';  ## pass
+        $params = array($idTicker, $date, $date1yrAgo, $sourceData);
         $data = execSqlSingleRowPREPARED($dbh, $query, $types, $params);
         $divAmt = $data{'divAmt'};
 
     
         $query = 'select adjusted_close from ticker_data where ticker_idticker = ?
                     and closing_date = 
-                    (select min(closing_date) from ticker_data where  ticker_idticker = ? and closing_date > ? )' ;
-        $types = 'iis';  ## pass
-        $params = array($idTicker, $idTicker, $date1yrAgo);
+                    (select min(closing_date) from ticker_data where  ticker_idticker = ? and closing_date > ? )
+                    and data_source_iddata_source = ?';
+        $types = 'iisi';  ## pass
+        $params = array($idTicker, $idTicker, $date1yrAgo,$sourceData);
         $data = execSqlSingleRowPREPARED($dbh, $query, $types, $params);
         $closeOldAdj = $data{'adjusted_close'};
 
         $query = 'select close from ticker_data where ticker_idticker = ?
                     and closing_date = 
-                    (select min(closing_date) from ticker_data where  ticker_idticker = ? and closing_date > date_sub(?, interval 52 week) )' ;
-        $types = 'iis';  ## pass
-        $params = array($idTicker, $idTicker, $date);
+                    (select min(closing_date) from ticker_data where  ticker_idticker = ? and closing_date > date_sub(?, interval 52 week) )
+                    and data_source_iddata_source = ?';
+        $types = 'iisi';  ## pass
+        $params = array($idTicker, $idTicker, $date, $sourceData);
         $data = execSqlSingleRowPREPARED($dbh, $query, $types, $params);
         $closeOldNonAdj = $data{'close'};
 
@@ -389,9 +392,9 @@ function  getPerformanceForTickerAndDate($dbh,$idTicker,$date, $update=0, $displ
         }
     
         if ($update){
-            $query = "UPDATE ticker_data SET 1yr_back_performance = ? where closing_date = ? and ticker_idticker = ?";
-            $types = 'dsi';  ## pass
-            $params = array($pricePerformanceAdj, $date, $idTicker);
+            $query = 'UPDATE ticker_data SET 1yr_back_performance = ? where closing_date = ? and ticker_idticker = ? and data_source_iddata_source = ?';
+            $types = 'dsii';  ## pass
+            $params = array($pricePerformanceAdj, $date, $idTicker, $sourceData);
             #$params = array($performanceNonAdj, $date, $idTicker);
             $rowsAffected = execSqlActionPREPARED($dbh, $query, $types, $params);
         }
